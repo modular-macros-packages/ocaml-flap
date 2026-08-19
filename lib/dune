@@ -1,7 +1,18 @@
+; Var lives in a plain sub-library, shift-imported by the staged
+; half; reex likewise serves the macros through (static_libraries ...)
+; while remaining a normal (libraries ...) dependency for its types.
+(library
+ (name vars)
+ (public_name flap.vars)
+ (modules vars))
+
 (library
  (public_name flap)
- (libraries letrec reex reex_match metaocaml)
- (modules Env Code Normal Compiler Fused Normalize Recognizer Flap)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap.vars letrec reex reex_match reex_match.deriv charmatch)
+ (static_libraries flap.vars reex reex_match.deriv)
+ ; No ppx here: ppxlib cannot migrate MacoCaml constructs (macros,
+ ; template functors, quotes), so macro-bearing files cannot be
+ ; preprocessed.  Deriving lives in consumers' plain token
+ ; sub-libraries instead.
+ (modules sigs mcol env code flap)
  (synopsis "Fused lexing and parsing"))

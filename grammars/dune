@@ -1,55 +1,55 @@
 (library
+ (name grammar_tokens)
+ (modules grammar_tokens)
+ (preprocess (pps ppx_deriving.std)))
+
+; The grammar libraries carry macros, so no ppx here; reex and the
+; token library are shift-imported for the macro bodies.
+(library
  (name grammars_common)
- (libraries flap)
- (modules Grammars_common)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex)
+ (static_libraries flap.vars reex reex_match.deriv)
+ (modules grammars_common)
  (synopsis "Flap example grammars: common code"))
 
 (library
  (name csv_grammar)
- (libraries flap grammars_common)
- (modules Csv_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules csv_grammar)
  (synopsis "Flap example grammars: csv"))
 
 (library
  (name json_grammar)
- (libraries flap grammars_common)
- (modules Json_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules json_grammar)
  (synopsis "Flap example grammars: json"))
 
 (library
  (name intexp_grammar)
- (libraries flap grammars_common)
- (modules Intexp_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules intexp_grammar)
  (synopsis "Flap example grammars: intexp"))
 
 (library
  (name pgn_grammar)
- (libraries flap grammars_common)
- (modules Pgn_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules pgn_grammar)
  (synopsis "Flap example grammars: pgn"))
 
 (library
  (name ppm_grammar)
- (libraries flap grammars_common)
- (modules Ppm_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules ppm_grammar)
  (synopsis "Flap example grammars: ppm"))
 
 (library
  (name sexp_grammar)
- (libraries flap grammars_common)
- (modules Sexp_grammar)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap reex grammars_common grammar_tokens)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens)
+ (modules sexp_grammar)
  (synopsis "Flap example grammars: sexp"))

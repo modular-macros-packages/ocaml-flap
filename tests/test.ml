@@ -1,160 +1,158 @@
-open OUnit2
 
-module Grammars =
-struct
-  module S = struct include Sexp_grammar end
-  module P = struct include Pgn_grammar end
-  module Q = struct include Ppm_grammar end
-  module J = struct include Json_grammar end
-  module C = struct include Csv_grammar end
-  module I = struct include Intexp_grammar end
-end
+
+open OUnit2
 
 module Single_rec =
 struct
   module C = Flap.Cd
-  module T = struct type t = LPAREN | RPAREN | SYMBOL [@@deriving ord,show] end
-  module P = Flap.Parse(T)
-  module R = Flap__.Recognizer.Make(T)
+  module T = struct
+    type t = Sexp_tokens.t = LPAREN | RPAREN | SYMBOL
+    macro compare : t -> t -> int = fun x y -> Sexp_tokens.compare x y
+    macro pp : Format.formatter -> t -> unit = fun fmt x -> Sexp_tokens.pp fmt x
+  end
+  module P = Flap.Parse[T]
 
-  let cases =
-     P.(Reex.[chr '(',                                Return LPAREN;
-              range 'a' 'z' >>> star (range 'a' 'z'), Return SYMBOL;
-              chr ')',                                Return RPAREN;
-              chr ' ',                                Skip])
+  macro cases : unit -> (Reex.t * P.rhs) list = fun () ->
+    [ Reex.chr '(', P.Return T.LPAREN;
+      Reex.(>>>) (Reex.range 'a' 'z') (Reex.star (Reex.range 'a' 'z')), P.Return T.SYMBOL;
+      Reex.chr ')', P.Return T.RPAREN;
+      Reex.chr ' ', P.Skip ]
 
-  let (inj, injv, dyn) = C.(inj, injv, dyn)
-  open P
+  macro tok' : T.t -> string P.t = fun c -> P.tok c (fun c -> c)
 
-  let tok c = P.tok c @@ fun c -> c
+  macro star' : 'a. 'a P.t -> 'a list P.t = fun x ->
+    P.fix (fun starx ->
+      P.(<|>) (P.eps (C.injv << [] >>))
+        (P.($.) (P.(>>>) x starx)
+          (fun p -> C.let_ p (fun p -> C.injv << $(C.dyn (C.fst p)) :: $(C.dyn (C.snd p)) >>))))
 
-  let star x =
-    fix @@ fun starx ->
-    (eps (injv .<[]>.))
-     <|> 
-    (x >>> starx $ fun p -> C.let_ p @@ fun p -> injv .< .~C.(dyn (fst p)) :: .~C.(dyn (snd p)) >.)
-  
-  let sexp : ([`Atom | `Sexp of 'sexp list] as 'sexp) t =
-    fix @@ fun sexp ->
-      (tok T.SYMBOL $ fun _ -> injv .< `Atom >.)
-  <|> (tok T.LPAREN >>> star sexp >>> tok T.RPAREN $ fun p -> C.let_ p @@ fun p -> injv .< `Sexp .~C.(dyn (snd (fst p))) >.)
-  
-  let compiled' = match P.compile cases sexp with Ok c -> c | Error e -> failwith e
-  (* let () = Format.(fprintf err_formatter) "%a@." Codelib.print_code compiled' *)
-  
-  let parser = Runnative.run compiled'
+  macro sexp : unit -> ([`Atom | `Sexp of 'sexp list] as 'sexp) P.t = fun () ->
+    P.fix (fun sexp ->
+      P.(<|>)
+        (P.($.) (tok' T.SYMBOL) (fun _ -> C.injv << `Atom >>))
+        (P.($.) (P.(>>>) (P.(>>>) (tok' T.LPAREN) (star' sexp)) (tok' T.RPAREN))
+          (fun p -> C.let_ p (fun p -> C.injv << `Sexp $(C.dyn (C.snd (C.fst p))) >>))))
+
+  macro compiled : unit -> (string -> ([`Atom | `Sexp of 'sexp list] as 'sexp)) expr = fun () ->
+    match P.compile (cases ()) (sexp ()) with
+    | Ok c -> c
+    | Error e -> failwith e
+
+  let parser_fn = $( compiled () )
 end
 
 
 module Backtracking =
 struct
   module C = Flap.Cd
-  module T = struct type t = AA | AAAB | EOF [@@deriving ord,show] end
-  module P = Flap.Parse(T)
+  module T = struct
+    type t = Bt_tokens.t = AA | AAAB | EOF
+    macro compare : t -> t -> int = fun x y -> Bt_tokens.compare x y
+    macro pp : Format.formatter -> t -> unit = fun fmt x -> Bt_tokens.pp fmt x
+  end
+  module P = Flap.Parse[T]
 
-  let cases =
-    P.(Reex.[str "aa",   Return AA;
-             str "aaab", Return AAAB;
-             str "",     Return EOF])
+  macro cases : unit -> (Reex.t * P.rhs) list = fun () ->
+    [ Reex.str "aa",   P.Return T.AA;
+      Reex.str "aaab", P.Return T.AAAB;
+      Reex.str "",     P.Return T.EOF ]
 
-  let (inj, injv, dyn) = C.(inj, injv, dyn)
-  open P
+  macro tok' : T.t -> string P.t = fun c -> P.tok c (fun c -> c)
 
-  let tok c = P.tok c @@ fun c -> c
+  macro star' : 'a. 'a P.t -> 'a list P.t = fun x ->
+    P.fix (fun starx ->
+      P.(<|>) (P.eps (C.injv << [] >>))
+        (P.($.) (P.(>>>) x starx)
+          (fun p -> C.let_ p (fun p -> C.injv << $(C.dyn (C.fst p)) :: $(C.dyn (C.snd p)) >>))))
 
-  let star x =
-    fix @@ fun starx ->
-    (eps (injv .<[]>.))
-     <|> 
-    (x >>> starx $ fun p -> C.let_ p @@ fun p -> injv .< .~C.(dyn (fst p)) :: .~C.(dyn (snd p)) >.)
-  
-  let aa () = tok T.AA $ fun _ -> injv .< `AA >.
-  let aaab () = tok T.AAAB $ fun _ -> injv .< `AAAB >.
+  macro aa : unit -> [`AA | `AAAB] P.t = fun () -> P.($.) (tok' T.AA) (fun _ -> C.injv << `AA >>)
+  macro aaab : unit -> [`AA | `AAAB] P.t = fun () -> P.($.) (tok' T.AAAB) (fun _ -> C.injv << `AAAB >>)
 
- let grammar : [ `AA | `AAAB ] list t = star (aa ()  <|> aaab ())
-  
-  let compiled' = match P.compile cases grammar with Ok c -> c | Error e -> failwith e
-  
-  let parser = Runnative.run compiled'
+  macro grammar : unit -> [`AA | `AAAB] list P.t = fun () -> star' (P.(<|>) (aa ()) (aaab ()))
+
+  macro compiled : unit -> (string -> [`AA | `AAAB] list) expr = fun () ->
+    match P.compile (cases ()) (grammar ()) with
+    | Ok c -> c
+    | Error e -> failwith e
+
+  let parser_fn = $( compiled () )
 end
 
 
 module Sexp_recognizer =
 struct
-  module C = Flap__.Code
-  module T = struct type t = LPAREN | RPAREN | SYMBOL [@@deriving ord,show] end
-  module S = Set.Make(T)
-  module R = Flap__.Recognizer.Make(T)
-  module F = Flap__.Fused.Make(T)
-  module N = Flap__.Normalize.Make(T)
-  open N
+  module C = Flap.Cd
+  module P = Single_rec.P
+  module T = Single_rec.T
+  module N = P.Unresolved
+  module R = P.Recognizer
 
-  let cases =
-    Reex.[chr '(',                                F.Return LPAREN;
-          range 'a' 'z' >>> star (range 'a' 'z'), F.Return SYMBOL;
-          chr ')',                                F.Return RPAREN;
-          chr ' ',                                F.Skip]
+  macro cases : unit -> (Reex.t * P.Fused.lexer_rhs) list = fun () ->
+    [ Reex.chr '(', P.Fused.Return T.LPAREN;
+      Reex.(>>>) (Reex.range 'a' 'z') (Reex.star (Reex.range 'a' 'z')), P.Fused.Return T.SYMBOL;
+      Reex.chr ')', P.Fused.Return T.RPAREN;
+      Reex.chr ' ', P.Fused.Skip ]
 
-  let (inj, injv, dyn) = C.(inj, injv, dyn)
+  macro tok' : T.t -> string N.t = fun c -> N.tok (N.($$) c (fun c -> c))
 
-  let tok c = N.tok (c $$ fun c -> c)
+  macro startset : unit -> P.TermSet.t = fun () -> P.TermSet.of_list [T.LPAREN; T.SYMBOL]
 
- let startset = S.of_list T.[LPAREN; SYMBOL]
+  macro star' : 'a. 'a N.t -> 'a list N.t = fun x ->
+    N.fix (startset ()) (fun starx ->
+      N.(<|>) (N.eps (C.injv << [] >>))
+        (N.($.) (N.(>>>) x starx)
+          (fun p -> C.let_ p (fun p -> C.injv << $(C.dyn (C.fst p)) :: $(C.dyn (C.snd p)) >>))))
 
-  let star x =
-    fix startset @@ fun starx ->
-    (eps (injv .<[]>.))
-     <|> 
-    (x >>> starx $ fun p -> C.let_ p @@ fun p -> injv .< .~C.(dyn (fst p)) :: .~C.(dyn (snd p)) >.)
-  
-  let sexp : ([`Atom | `Sexp of 'sexp list] as 'sexp) t =
-    fix startset @@ fun sexp ->
-      (tok T.SYMBOL $ fun _ -> injv .< `Atom >.)
-  <|> (tok T.LPAREN >>> star sexp >>> tok T.RPAREN $ fun p -> C.let_ p @@ fun p -> injv .< `Sexp .~C.(dyn (snd (fst p))) >.)
-  
-  let fused = F.fuse cases (N.resolve sexp)
-  (* let () = Format.(fprintf err_formatter) "%a@." (F.pp_grammar (fun _ _ -> ())) fused *)
+  macro sexp : unit -> ([`Atom | `Sexp of 'sexp list] as 'sexp) N.t = fun () ->
+    N.fix (startset ()) (fun sexp ->
+      N.(<|>)
+        (N.($.) (tok' T.SYMBOL) (fun _ -> C.injv << `Atom >>))
+        (N.($.) (N.(>>>) (N.(>>>) (tok' T.LPAREN) (star' sexp)) (tok' T.RPAREN))
+          (fun p -> C.let_ p (fun p -> C.injv << `Sexp $(C.dyn (C.snd (C.fst p))) >>))))
 
-  let unfused s =
-    match R.Lexer.lex cases s with
+  macro fused_recognize : string -> bool = fun s ->
+    R.FusedR.recognize (P.Fused.fuse (cases ()) (P.Resolve.resolve (sexp ()))) s
+
+  macro unfused : string -> bool = fun s ->
+    match R.Lexer.lex (cases ()) s with
     | None -> false
-    | Some ts -> R.Normalized.recognize (N.resolve sexp) ts
+    | Some ts -> R.Normalized.recognize (P.Resolve.resolve (sexp ())) ts
 end
 
 
 module Tok_recognizer =
 struct
-  module C = Flap__.Code
-  module T = struct type t = AA | AAAB [@@deriving ord,show] end
-  module S = Set.Make(T)
-  module R = Flap__.Recognizer.Make(T)
-  module F = Flap__.Fused.Make(T)
-  module N = Flap__.Normalize.Make(T)
-  open N
+  module C = Flap.Cd
+  module T = struct
+    type t = Tok_tokens.t = AA | AAAB
+    macro compare : t -> t -> int = fun x y -> Tok_tokens.compare x y
+    macro pp : Format.formatter -> t -> unit = fun fmt x -> Tok_tokens.pp fmt x
+  end
+  module P = Flap.Parse[T]
+  module N = P.Unresolved
+  module R = P.Recognizer
 
-  let cases =
-    Reex.[str "aa", F.Return AA;
-          str "aaab", F.Return AAAB]
+  macro cases : unit -> (Reex.t * P.Fused.lexer_rhs) list = fun () ->
+    [ Reex.str "aa", P.Fused.Return T.AA;
+      Reex.str "aaab", P.Fused.Return T.AAAB ]
 
-  let (inj, injv, dyn) = C.(inj, injv, dyn)
+  macro tok' : T.t -> string N.t = fun c -> N.tok (N.($$) c (fun c -> c))
 
-  let tok c = N.tok (c $$ fun c -> c)
+  macro star' : 'a. 'a N.t -> 'a list N.t = fun x ->
+    N.fix (P.TermSet.of_list [T.AA; T.AAAB]) (fun starx ->
+      N.(<|>) (N.eps (C.injv << [] >>))
+        (N.($.) (N.(>>>) x starx)
+          (fun p -> C.let_ p (fun p -> C.injv << $(C.dyn (C.fst p)) :: $(C.dyn (C.snd p)) >>))))
 
-  let star x =
-    fix  (S.of_list T.[AA; AAAB]) @@ fun starx ->
-    (eps (injv .<[]>.))
-     <|> 
-    (x >>> starx $ fun p -> C.let_ p @@ fun p -> injv .< .~C.(dyn (fst p)) :: .~C.(dyn (snd p)) >.)
+  macro grammar : unit -> string list N.t = fun () -> star' (N.(<|>) (tok' T.AA) (tok' T.AAAB))
 
-  let grammar : _ t = star (tok T.AA <|> tok T.AAAB) (* >>> tok T.EOF *)
-  
-  let fused = F.fuse cases (N.resolve grammar)
-  (* let () = Format.(fprintf err_formatter) "%a@." (F.pp_grammar (fun _ _ -> ())) fused *)
+  macro fused_recognize : string -> bool = fun s ->
+    R.FusedR.recognize (P.Fused.fuse (cases ()) (P.Resolve.resolve (grammar ()))) s
 
-  let unfused s =
-    match R.Lexer.lex cases s with
+  macro unfused : string -> bool = fun s ->
+    match R.Lexer.lex (cases ()) s with
     | None -> false
-    | Some ts -> R.Normalized.recognize (N.resolve grammar) ts
+    | Some ts -> R.Normalized.recognize (P.Resolve.resolve (grammar ())) ts
 end
 
 
@@ -162,118 +160,82 @@ let single_rec_sexp_tests _ =
   begin
     assert_equal
       (`Atom)
-      (Single_rec.parser "abc-def");
-    
+      (Single_rec.parser_fn "abc-def");
+
     assert_equal
       (`Sexp [])
-      (Single_rec.parser "()");
+      (Single_rec.parser_fn "()");
 
     assert_equal
       (`Sexp [`Atom;])
-      (Single_rec.parser "( aaa )");
-    
+      (Single_rec.parser_fn "( aaa )");
+
     assert_equal
       (`Sexp [`Atom; `Sexp [`Atom; `Sexp []]; `Atom;])
-      (Single_rec.parser "  (a(aa())  a)");
+      (Single_rec.parser_fn "  (a(aa())  a)");
   end
 
 
 let backtracking _ =
   begin
-    assert_equal [`AA] (Backtracking.parser "aa");
+    assert_equal [`AA] (Backtracking.parser_fn "aa");
 
-    assert_equal [`AA;`AA] (Backtracking.parser "aaaa");
+    assert_equal [`AA;`AA] (Backtracking.parser_fn "aaaa");
 
-    assert_equal [`AAAB] (Backtracking.parser "aaab");
+    assert_equal [`AAAB] (Backtracking.parser_fn "aaab");
   end
 
 
 let recognizer_sexp_tests _ =
   begin
-    assert
-      (Sexp_recognizer.(R.Fused.recognize fused) "()");
+    assert $( Expr.bool (Sexp_recognizer.fused_recognize "()") );
+    assert $( Expr.bool (Sexp_recognizer.unfused "()") );
 
-    assert
-      (Sexp_recognizer.unfused "()");
+    assert $( Expr.bool (Sexp_recognizer.fused_recognize "abcdef") );
+    assert $( Expr.bool (Sexp_recognizer.unfused "abcdef") );
 
-    assert
-      (Sexp_recognizer.(R.Fused.recognize fused) "abcdef");
+    assert $( Expr.bool (Sexp_recognizer.fused_recognize "( abc )") );
+    assert $( Expr.bool (Sexp_recognizer.unfused "( abc )") );
 
-    assert
-      (Sexp_recognizer.unfused "abcdef");
+    assert (not $( Expr.bool (Sexp_recognizer.fused_recognize "( abc ))") ));
+    assert (not $( Expr.bool (Sexp_recognizer.unfused "( abc ))") ));
 
-    assert
-      (Sexp_recognizer.(R.Fused.recognize fused) "( abc )");
+    assert (not $( Expr.bool (Sexp_recognizer.fused_recognize "(") ));
+    assert (not $( Expr.bool (Sexp_recognizer.unfused "(") ));
 
-    assert
-      (Sexp_recognizer.unfused "( abc )");
-    
-    assert
-      (not (Sexp_recognizer.(R.Fused.recognize fused) "( abc ))"));
+    assert $( Expr.bool (Sexp_recognizer.fused_recognize "( (abc) ((h bc) (ef g)) )") );
+    assert $( Expr.bool (Sexp_recognizer.unfused "( (abc) ((h bc) (ef g)) )") );
 
-    assert
-      (not (Sexp_recognizer.unfused "( abc ))"));
-    
-    assert
-      (not (Sexp_recognizer.(R.Fused.recognize fused) "("));
+    assert (not $( Expr.bool (Sexp_recognizer.fused_recognize "( (abc) ((h bc (ef g)) )") ));
+    assert (not $( Expr.bool (Sexp_recognizer.unfused "( (abc) ((h bc (ef g)) )") ));
 
-    assert
-      (not (Sexp_recognizer.unfused "("));
-
-    assert
-      (Sexp_recognizer.(R.Fused.recognize fused) "( (abc) ((h bc) (ef g)) )");
-
-    assert
-      (Sexp_recognizer.unfused "( (abc) ((h bc) (ef g)) )");
-
-    assert
-      (not (Sexp_recognizer.(R.Fused.recognize fused) "( (abc) ((h bc (ef g)) )"));
-
-    assert
-      (not (Sexp_recognizer.unfused "( (abc) ((h bc (ef g)) )"));
-
-    assert
-      (not (Sexp_recognizer.(R.Fused.recognize fused) "( (abc) ((h bc) (ef g)) )."));
-
-    assert
-      (not (Sexp_recognizer.unfused "( (abc) ((h bc) (ef g)) )."));
+    assert (not $( Expr.bool (Sexp_recognizer.fused_recognize "( (abc) ((h bc) (ef g)) ).") ));
+    assert (not $( Expr.bool (Sexp_recognizer.unfused "( (abc) ((h bc) (ef g)) ).") ));
   end
 
 
 let tok_recognizer_tests _ =
   begin
-    assert
-      (Tok_recognizer.(R.Fused.recognize fused) "aa");
+    assert $( Expr.bool (Tok_recognizer.fused_recognize "aa") );
+    assert $( Expr.bool (Tok_recognizer.unfused "aa") );
 
-    assert
-      (Tok_recognizer.unfused "aa");
+    assert (not $( Expr.bool (Tok_recognizer.fused_recognize "aaa") ));
+    assert (not $( Expr.bool (Tok_recognizer.unfused "aaa") ));
 
-    assert
-      (not (Tok_recognizer.(R.Fused.recognize fused) "aaa"));
+    assert $( Expr.bool (Tok_recognizer.fused_recognize "aaaa") );
+    assert $( Expr.bool (Tok_recognizer.unfused "aaaa") );
 
-    assert
-      (not (Tok_recognizer.unfused "aaa"));
-    
-    assert
-      (Tok_recognizer.(R.Fused.recognize fused) "aaaa");
-
-    assert
-      (Tok_recognizer.unfused "aaaa");
-    
-    assert
-      (Tok_recognizer.(R.Fused.recognize fused) "aaab");
-
-    assert
-      (Tok_recognizer.unfused "aaab");
+    assert $( Expr.bool (Tok_recognizer.fused_recognize "aaab") );
+    assert $( Expr.bool (Tok_recognizer.unfused "aaab") );
   end
 
 let suite = "Parser tests" >:::
   ["single rec sexp"
     >:: single_rec_sexp_tests;
-   
+
    "backtracking parser"
     >:: backtracking;
-   
+
    "recognzier sexp"
     >:: recognizer_sexp_tests;
 

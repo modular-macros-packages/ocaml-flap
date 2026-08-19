@@ -18,62 +18,62 @@
    CRLF = CR LF ;as per section 6.1 of RFC 2234 [2]
    TEXTDATA =  %x20-21 / %x23-2B / %x2D-7E
  *)
-module T = struct type t = CRLF | COMMA | FIELD [@@deriving ord, show] end
+module T = struct
+  type t = Grammar_tokens.Csv.t = CRLF | COMMA | FIELD
+  macro compare : t -> t -> int = fun x y -> Grammar_tokens.Csv.compare x y
+  macro pp : Format.formatter -> t -> unit = fun fmt x -> Grammar_tokens.Csv.pp fmt x
+end
 
-open Grammars_common.Common(T)
-open Flap.Cd
+module G = Grammars_common.Common[T]
+module P = G.P
+module C = Flap.Cd
 
-let lexer =
-  let open L in
-  let textdata = range '\x20' '\x21'
-             <|> range '\x23' '\x2B'
-             <|> range '\x2D' '\x7E' in
-  let dquote = chr '"' in
-  let doubledquote = dquote >>> dquote in
-  let comma = chr ',' in
-  let cr = chr '\r' in
-  let lf = chr '\n' in
-  let crlf = cr >>> lf in
-  let nonescaped = plus textdata in (* TODO: not quite right: we should have star textdata here *)
-  let escaped    = dquote
-               >>> star (textdata  <|> comma <|> cr <|> lf <|> doubledquote)
-               >>> dquote in
-  [comma                  ==> COMMA;
-   crlf                   ==> CRLF;
-   escaped <|> nonescaped ==> FIELD]
+macro lexer : unit -> (Reex.t * P.rhs) list = fun () ->
+  let textdata = Reex.(<|>) (Reex.range '\x20' '\x21')
+                   (Reex.(<|>) (Reex.range '\x23' '\x2B') (Reex.range '\x2D' '\x7E')) in
+  let dquote = Reex.chr '"' in
+  let doubledquote = Reex.(>>>) dquote dquote in
+  let comma = Reex.chr ',' in
+  let cr = Reex.chr '\r' in
+  let lf = Reex.chr '\n' in
+  let crlf = Reex.(>>>) cr lf in
+  let nonescaped = Reex.plus textdata in (* TODO: not quite right: we should have star textdata here *)
+  let escaped    = Reex.(>>>) dquote
+                     (Reex.(>>>)
+                        (Reex.star (Reex.(<|>) textdata
+                                      (Reex.(<|>) comma (Reex.(<|>) cr (Reex.(<|>) lf doubledquote)))))
+                        dquote) in
+  [ comma                          , P.Return T.COMMA;
+    crlf                           , P.Return T.CRLF;
+    Reex.(<|>) escaped nonescaped  , P.Return T.FIELD ]
 
 module Parser =
 struct
-  open P
+  macro comma : unit -> unit P.t = fun () -> P.tok T.COMMA (fun _ -> C.injv << () >>)
+  macro crlf  : unit -> unit P.t = fun () -> P.tok T.CRLF  (fun _ -> C.injv << () >>)
+  macro field : unit -> string P.t = fun () -> P.tok T.FIELD (fun s -> C.injv (C.dyn s))
 
-  let (/=>) t f = tok t @@ fun s -> injv (f s)
-  let comma = T.COMMA /=> fun _ -> .<()>.
-  let crlf  = T.CRLF  /=> fun _ -> .<()>.
-  let field = T.FIELD /=> fun s -> dyn s
-  
-  let fields = fix @@ fun fields -> (eps (injv .<0>.))
-                                <|> ((comma >>> field) >>> fields $ fun p -> let_ p @@ fun p -> injv .< 1 + .~(dyn (snd p)) >.)
-  
-  let record = (field >>> fields) >>> crlf $ fun p -> let_ p @@ fun p ->injv (.<1 + .~(dyn (snd (fst p))) >.)
-  let records = fix @@ fun records -> (record >>> option records $ fun p -> let_ p @@ fun p -> 
-                                                                            let r = dyn (fst p) and rs = dyn (snd p) in
-                                                                     inj .< match .~rs with
-                                                                            | None -> .~r
-                                                                            | Some rs -> assert (.~r = rs); .~r >.)
-  let file = records
+  macro fields : unit -> int P.t = fun () ->
+    P.fix @@ fun fields ->
+    P.(<|>) (P.eps (C.injv << 0 >>))
+      (P.($.) (P.(>>>) (P.(>>>) (comma ()) (field ())) fields)
+         (fun p -> C.let_ p @@ fun p -> C.injv << 1 + $(C.dyn (C.snd p)) >>))
+
+  macro record : unit -> int P.t = fun () ->
+    P.($.) (P.(>>>) (P.(>>>) (field ()) (fields ())) (crlf ()))
+      (fun p -> C.let_ p @@ fun p -> C.injv << 1 + $(C.dyn (C.snd (C.fst p))) >>)
+
+  macro records : unit -> int P.t = fun () ->
+    P.fix @@ fun records ->
+    P.($.) (P.(>>>) (record ()) (P.option records))
+      (fun p -> C.let_ p @@ fun p ->
+        let r = C.dyn (C.fst p) and rs = C.dyn (C.snd p) in
+        C.inj << match $rs with
+                 | None -> $r
+                 | Some rs -> assert ($r = rs); $r >>)
+
+  macro file : unit -> int P.t = fun () -> records ()
 end
 
-(* let code0 = build "csv" Parser.field lexer
- * let () = Format.(fprintf std_formatter) "let field = %a@." Codelib.print_code code0
- * 
- * let code1 = build "csv" Parser.fields lexer
- * let () = Format.(fprintf std_formatter) "let fields = %a@." Codelib.print_code code1
- * 
- * let code2 = build "csv" Parser.record lexer
- * let () = Format.(fprintf std_formatter) "let record = %a@." Codelib.print_code code2
- * 
- * let code3 = build "csv" Parser.records lexer
- * let () = Format.(fprintf std_formatter) "let records = %a@." Codelib.print_code code3 *)
-
-let code = Result.get_ok (build "csv" Parser.file lexer)
-(* let () = Format.(fprintf std_formatter) "let csv = %a@." Codelib.print_code code *)
+macro code : unit -> (string -> int) expr = fun () ->
+  Result.get_ok (G.build "csv" (Parser.file ()) (lexer ()))

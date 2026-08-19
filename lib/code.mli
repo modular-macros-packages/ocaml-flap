@@ -6,7 +6,7 @@
  *)
 
 
-(** A less-naive code representation.
+(** A less-naive code representation (MacoCaml port: operations are macros over ['a expr]).
 
     Naively using MetaOCaml's built-in code type and built-in
     quotation can lead to programs that generate undesirably-large
@@ -45,18 +45,18 @@
 type _ t
 (** A type of code representations.*)
 
-val inj : 'a code -> 'a t
+macro inj : 'a. 'a expr -> 'a t
 (** Injection from MetaOCaml's code representations *)
 
-val injv : 'a code -> 'a t
+macro injv : 'a. 'a expr -> 'a t
 (** Value injection from MetaOCaml's code representations.  Using
    [injv] rather than [inj] indicates that it is safe to duplicate the
    argument in generated code. *)
 
-val dyn : 'a t -> 'a code
+macro dyn : 'a. 'a t -> 'a expr
 (** Conversion to MetaOCaml's code representations. *)
 
-val let_ : 'a t -> ('a t -> 'b t) -> 'b t
+macro let_ : 'a 'b. 'a t -> ('a t -> 'b t) -> 'b t
 (** Construct a let binding. 
 
     [let_ e k] constructs the code
@@ -71,18 +71,19 @@ val let_ : 'a t -> ('a t -> 'b t) -> 'b t
         [let x2 = (let x1 = e1 in e2) in e3]
  *)
 
-val fst : ('a * 'b) t -> 'a t
+macro fst : 'a 'b. ('a * 'b) t -> 'a t
 (** First projection.  [fst (pair (injv x) (injv y))] simplifies to [injv x].
  *)
 
-val snd : ('a * 'b) t -> 'b t
+macro snd : 'a 'b. ('a * 'b) t -> 'b t
 (** Second projection.  [snd (pair (injv x) (injv y))] simplifies to [injv y].
  *)
 
-val pair : 'a t -> 'b t -> ('a * 'b) t
+macro pair : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
 (** Construct a representation of a pair from two representations.
  *)
 
-val unit : unit t
+macro unit : unit -> unit t
+(** A macro, thunked: a level-0 value would be invisible to macro callers. *)
 (** The representation of the unit value ().
  *)
