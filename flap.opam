@@ -11,15 +11,12 @@ license: "MIT"
 build: [[make]
         [make "test" "bench"]  {with-test} ]
 depends: [
-   "dune" {build}
-
+   "dune" {>= "3.24"}
+   "ocaml-variants" {= "5.5.0+macocaml-prototype-2026-09-22"}
    "letrec"
    "reex"
    "reex_match"
+   "charmatch"
    "ppx_deriving"
-
-   "ounit" {with-test}
-
-  "ocaml-variants"
-    {= "4.11.1+BER" | = "4.11.1+BER+flambda"}
+   "ounit2" {with-test}
 ]

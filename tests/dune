@@ -1,5 +1,37 @@
+(library
+ (name test_tokens)
+ (modules sexp_tokens bt_tokens tok_tokens)
+ (preprocess (pps ppx_deriving.std))
+ (wrapped false))
+
+; flap/reex_match/letrec/charmatch macros arrive through the ordinary
+; imports; the shifted closures (flap.vars, reex, reex_match.deriv,
+; and the token library for the Term wrapper macros) must be named
+; here, since static requirements do not propagate transitively.
+(executable
+ (name test_single)
+ (modules test_single)
+ (libraries flap reex test_tokens)
+ (static_libraries flap.vars reex reex_match.deriv test_tokens))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_single.exe)))
+
 (test
  (name test)
- (modes native)
- (preprocess (pps ppx_deriving.std))
- (libraries dynlink metaocaml compiler-libs.optcomp ounit2 flap sexp_grammar pgn_grammar ppm_grammar json_grammar csv_grammar intexp_grammar))
+ (modules test)
+ (libraries ounit2 flap reex test_tokens)
+ (static_libraries flap.vars reex reex_match.deriv test_tokens))
+
+(executable
+ (name test_grammars)
+ (modules test_grammars)
+ (libraries flap reex sexp_grammar csv_grammar json_grammar intexp_grammar pgn_grammar ppm_grammar)
+ (static_libraries flap.vars reex reex_match.deriv grammar_tokens))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_grammars.exe)))

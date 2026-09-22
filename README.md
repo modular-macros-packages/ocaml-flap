@@ -8,6 +8,13 @@ The following paper has many more details:
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Jeremy Yallop, Ningning Xie and Neel Krishnaswami  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PLDI 2023  
 
+*This branch is the MacoCaml port: the whole pipeline runs at
+compile time as macros (`Flap.Parse` is a template functor over a
+`TERM` whose operations are macros), and generated parsers are
+obtained by top-level splices instead of `Runnative.run`.  The
+semantic-action combinator is `( $. )` here — `$` is a reserved token
+in MacoCaml.  See PROPOSAL-macocaml-port.md for the design.*
+
 ## Trying out flap
 
 There is a [Docker image][artifact] available on Zenodo with accompanying tutorial instructions for trying out `flap` and reproducing the results in the paper.
