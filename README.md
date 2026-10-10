@@ -8,6 +8,17 @@ The following paper has many more details:
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Jeremy Yallop, Ningning Xie and Neel Krishnaswami  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PLDI 2023  
 
+*This branch is the MacoCaml port: the whole pipeline runs at
+compile time as `$let` bindings (`Flap.Parse` and the layers beneath
+it, `Normal`/`Normalize`/`Fused`/`Compiler`/`Recognizer`, are
+templates over a `TERM` whose operations are `$let`s, laid out as
+upstream's functors are), and generated parsers are
+obtained by top-level splices instead of `Runnative.run`.  The
+semantic-action combinator is upstream's `( $ )`; write it spaced
+(`g $ f`), since a glued `$x` is a splice.  (`( $. )`, its name while
+`$` was reserved, remains as a deprecated alias.)  See
+PROPOSAL-macocaml-port.md for the design.*
+
 ## Trying out flap
 
 There is a [Docker image][artifact] available on Zenodo with accompanying tutorial instructions for trying out `flap` and reproducing the results in the paper.

@@ -5,50 +5,63 @@
  * See the file LICENSE for details.
  *)
 
-module NT = Env.Var
+
 
 module V = Code
-module Make(Term: sig type t [@@deriving ord, show] end) =
+module Make $(Term : Sigs.TERM) =
 struct
-  module Gnf = Normal.Make(Term)
-  module TermMap = Map.Make(Term)
-  module ReexMap = Map.Make(Reex)
+  module Gnf = Normal.Make$(Term)
+  module TermMap = Mcol.Mmap$(Term)
+  module ReexOrd = struct
+    type t = Reex.t
+    $let compare : t -> t -> int = fun x y -> Reex.compare x y
+  end
+  module ReexMap = Mcol.Mmap$(ReexOrd)
   type 'a cont = Success of 'a Gnf.prod
                | Error of string
-  module Productions = Env.Env(struct type 'a t = (Reex.t * 'a cont) list * 'a V.t option end)
+  module FRhsV = struct type 'a t = (Reex.t * 'a cont) list * 'a V.t option end
+  module Productions = Env.Env$(FRhsV)
   type productions = Productions.t
-  type 'a grammar = { start: 'a NT.t; items: Productions.t; }
+  type 'a grammar = { start: 'a Vars.Var.t; items: Productions.t; }
 
-  let lookup = Productions.(.%{})
+  $let lookup : 'a. Productions.t -> 'a Vars.Var.t -> (Reex.t * 'a cont) list * 'a V.t option =
+    Productions.(.%{})
 
   module PP =
   struct
-    let pr = Format.fprintf
+    $let pr : 'a. Format.formatter -> ('a, Format.formatter, unit) format -> 'a =
+      fun fmt f -> Format.fprintf fmt f
 
-    let cont : type a. Format.formatter -> a cont -> unit =
-      fun fmt -> function
-      | Success p -> pr fmt "✓ %a" (Gnf.pp_prod (fun _ _ -> ())) p
+    $let cont : 'a. Format.formatter -> 'a cont -> unit =
+      fun fmt c ->
+      match c with
+      | Success p -> pr fmt "✓ %a" (fun fmt p -> Gnf.pp_prod (fun _ _ -> ()) fmt p) p
       | Error e -> pr fmt "X %S" e
 
-    let rhs : type a. Format.formatter -> (Reex.t * a cont) list * a V.t option -> unit =
+    $let rhs : 'a. Format.formatter -> (Reex.t * 'a cont) list * 'a V.t option -> unit =
       fun fmt (l, o) ->
-      List.iter (fun (r, k) -> pr fmt "@ @[| \"%a\" @[%a@]@]" Reex.pp r cont k) l;
+      List.iter (fun (r, k) -> pr fmt "@ @[| \"%a\" @[%a@]@]" Reex.pp r (fun fmt k -> cont fmt k) k) l;
       Option.iter (fun _ -> pr fmt "@ @[| EPS@]") o
 
-    let productions fmt p =
-      Productions.pp (object method m : 'a. Format.formatter -> (Reex.t * 'a cont) list * 'a V.t option -> unit = rhs end) fmt p
+    $let productions : Format.formatter -> Productions.t -> unit =
+      fun fmt p ->
+      Productions.pp { Productions.m = fun fmt r -> rhs fmt r } fmt p
 
-    let grammar fmt g = pr fmt "<@[%s,@ @[%a@]@]>" (NT.str g.start) productions g.items
+    $let grammar : 'a. Format.formatter -> 'a grammar -> unit =
+      fun fmt g -> pr fmt "<@[%s,@ @[%a@]@]>" (Vars.Var.str g.start) (fun fmt p -> productions fmt p) g.items
   end
-  let pp_grammar _ = PP.grammar
-  let show_grammar _ = Format.asprintf "%a" PP.grammar
+  $let pp_grammar : 'a 'b. 'b -> Format.formatter -> 'a grammar -> unit =
+    fun _ fmt g -> PP.grammar fmt g
+  $let show_grammar : 'a 'b. 'b -> 'a grammar -> string =
+    fun _ g -> Format.asprintf "%a" (fun fmt g -> PP.grammar fmt g) g
 
   type lexer_rhs = Skip | Error of string | Return of Term.t
   type inverted_lexer = { skip: Reex.t option;
                           errors: string ReexMap.t;
                           matches: Reex.t TermMap.t }
 
-  let invert_lexer : (Reex.t * lexer_rhs) list -> inverted_lexer =
+  $let invert_lexer : (Reex.t * lexer_rhs) list -> inverted_lexer =
+    fun rules ->
     let add_rule ilexer (r, rhs) =
       match ilexer, rhs with
       | { skip = None; _ }   , Skip -> { ilexer with skip = Some r }
@@ -62,9 +75,10 @@ struct
     in
     List.fold_left add_rule
       { skip = None; errors = ReexMap.empty; matches = TermMap.empty }
+      rules
 
-  let rhs : type a. inverted_lexer -> a NT.t -> a Gnf.rhs -> (Reex.t * a cont) list * a V.t option =
-    fun { skip; errors; matches } x { prods; null } ->
+  $let rhs : 'a. inverted_lexer -> 'a Vars.Var.t -> 'a Gnf.rhs -> (Reex.t * 'a cont) list * 'a V.t option =
+    fun { skip; errors; matches } x { Gnf.prods; null } ->
     (* TODO: check that all the tokens in prods appear in ilexer? *)
     let prods =
       TermMap.fold
@@ -86,15 +100,15 @@ struct
     in
     prods, null
 
-  let fusei : type a. inverted_lexer -> a Gnf.grammar -> a grammar =
-    fun ilexer { start; items } -> (* (Assumption: the regexes are disjoint) *)
-    let module P = Gnf.Productions in
+  $let fusei : 'a. inverted_lexer -> 'a Gnf.grammar -> 'a grammar =
+    fun ilexer { Gnf.start; items } -> (* (Assumption: the regexes are disjoint) *)
     { start; items = List.fold_right
                        (fun p e ->
-                         match p with P.E (x, r) -> Productions.bind x (rhs ilexer x r) e
-                                    | P.Alias (x, y) -> Productions.alias x y e)
-                       (items :> P.entry list)
+                         match p with Gnf.Productions.E (x, r) -> Productions.bind x (rhs ilexer x r) e
+                                    | Gnf.Productions.Alias (x, y) -> Productions.alias x y e)
+                       (items :> Gnf.Productions.entry list)
                        Productions.empty }
 
-  let fuse l g = fusei (invert_lexer l) g
+  $let fuse : 'a. (Reex.t * lexer_rhs) list -> 'a Gnf.grammar -> 'a grammar =
+    fun l g -> fusei (invert_lexer l) g
 end

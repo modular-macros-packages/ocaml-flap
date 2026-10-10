@@ -12,15 +12,19 @@
 
       flap: A Deterministic Parser with Fused Lexing
       PLDI 2023
+
+  (MacoCaml port: [Make] is a template over [TERM]; its operations are
+  [$let] bindings, and the printers that upstream derived are
+  hand-written.)
  *)
-module Make (Term : sig type t [@@deriving ord, show] end) :
+module Make $(Term : Sigs.TERM) :
 sig
   type 'a ntseq = Empty : unit ntseq
-                | Cons : 'a Env.Var.t * 'b ntseq -> ('a * 'b) ntseq
+                | Cons : 'a Vars.Var.t * 'b ntseq -> ('a * 'b) ntseq
   (** A possibly-empty sequence of typed variables *)
 
   type 'l prod = Prod : { nonterms : 'n ntseq;
-                          semact : string Code.t -> 'n Code.t -> 'l Code.t; } -> 'l prod [@@deriving show]
+                          semact : string Code.t -> 'n Code.t -> 'l Code.t; } -> 'l prod
   (** A [prod] is part of the right-hand side of a normalized production.
       If the production is
 
@@ -31,8 +35,11 @@ sig
       from variables representing the token corresponding to terminal [T]
                               and the parsed values corresponding to nonterminals [Ni] *)
 
-  type 'a rhs = { prods : 'a prod Map.Make(Term).t;
-                  null : 'a Code.t option; } [@@deriving show]
+  $val pp_prod : 'a 'b. 'b -> Format.formatter -> 'a prod -> unit
+  $val show_prod : 'a 'b. 'b -> 'a prod -> string
+
+  type 'a rhs = { prods : 'a prod Mcol.Mmap$(Term).t;
+                  null : 'a Code.t option; }
   (** A [rhs] represents all the productions for a particular nonterminal N:
 
          [N -> T₁ N₁1 ... N₁n₁ { e₁ }
@@ -48,13 +55,20 @@ sig
       For details of the normal form, see sections 2 and 3 of the paper.
   *)
 
-  module Productions : module type of Env.Env(struct type 'a t = 'a rhs end)
+  $val pp_rhs : 'a 'b. 'b -> Format.formatter -> 'a rhs -> unit
+  $val show_rhs : 'a 'b. 'b -> 'a rhs -> string
 
-  type 'a grammar = { start : 'a Env.Var.t; items : Productions.t; } [@@deriving show]
+  module RhsV : sig type 'a t = 'a rhs end
+  module Productions : module type of Env.Env$(RhsV)
+
+  type 'a grammar = { start : 'a Vars.Var.t; items : Productions.t; }
   (** A [grammar] consists of a start symbol and a mapping from nonterminals to
       right-hand sides of type [rhs] *)
 
-  val trim : 'a grammar -> 'a grammar
+  $val pp_grammar : 'a 'b. 'b -> Format.formatter -> 'a grammar -> unit
+  $val show_grammar : 'a 'b. 'b -> 'a grammar -> string
+
+  $val trim : 'a. 'a grammar -> 'a grammar
   (** [trim g] returns a new grammar that is equivalent to [g] but does not
       contain productions that cannot be reached from the start symbol. *)
 end

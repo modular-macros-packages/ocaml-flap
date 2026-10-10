@@ -18,12 +18,18 @@
    CRLF = CR LF ;as per section 6.1 of RFC 2234 [2]
    TEXTDATA =  %x20-21 / %x23-2B / %x2D-7E
  *)
-module T = struct type t = CRLF | COMMA | FIELD [@@deriving ord, show] end
+module T = struct
+  type t = Grammar_tokens.Csv.t = CRLF | COMMA | FIELD
+  $let compare : t -> t -> int = fun x y -> Grammar_tokens.Csv.compare x y
+  $let pp : Format.formatter -> t -> unit = fun fmt x -> Grammar_tokens.Csv.pp fmt x
+end
 
-open Grammars_common.Common(T)
+module G = Grammars_common.Common$(T)
+open G
 open Flap.Cd
 
-let lexer =
+$let lexer : (Reex.t * P.rhs) list =
+  let open Reex in
   let open L in
   let textdata = range '\x20' '\x21'
              <|> range '\x23' '\x2B'
@@ -46,34 +52,26 @@ module Parser =
 struct
   open P
 
-  let (/=>) t f = tok t @@ fun s -> injv (f s)
-  let comma = T.COMMA /=> fun _ -> .<()>.
-  let crlf  = T.CRLF  /=> fun _ -> .<()>.
-  let field = T.FIELD /=> fun s -> dyn s
-  
-  let fields = fix @@ fun fields -> (eps (injv .<0>.))
-                                <|> ((comma >>> field) >>> fields $ fun p -> let_ p @@ fun p -> injv .< 1 + .~(dyn (snd p)) >.)
-  
-  let record = (field >>> fields) >>> crlf $ fun p -> let_ p @@ fun p ->injv (.<1 + .~(dyn (snd (fst p))) >.)
-  let records = fix @@ fun records -> (record >>> option records $ fun p -> let_ p @@ fun p -> 
+  $let (/=>) : 'a. T.t -> (string Flap.Cd.t -> 'a expr) -> 'a P.t =
+    fun t f -> tok t @@ fun s -> injv (f s)
+  $let comma : unit P.t   = T.COMMA /=> fun _ -> << () >>
+  $let crlf  : unit P.t   = T.CRLF  /=> fun _ -> << () >>
+  $let field : string P.t = T.FIELD /=> fun s -> dyn s
+
+  $let fields : int P.t =
+               fix @@ fun fields -> (eps (injv << 0 >>))
+                                <|> ((comma >>> field) >>> fields $ fun p -> let_ p @@ fun p -> injv << 1 + $(dyn (snd p)) >>)
+
+  $let record : int P.t =
+               (field >>> fields) >>> crlf $ fun p -> let_ p @@ fun p -> injv (<< 1 + $(dyn (snd (fst p))) >>)
+  $let records : int P.t =
+                fix @@ fun records -> (record >>> option records $ fun p -> let_ p @@ fun p ->
                                                                             let r = dyn (fst p) and rs = dyn (snd p) in
-                                                                     inj .< match .~rs with
-                                                                            | None -> .~r
-                                                                            | Some rs -> assert (.~r = rs); .~r >.)
-  let file = records
+                                                                     inj << match $rs with
+                                                                            | None -> $r
+                                                                            | Some rs -> assert ($r = rs); $r >>)
+  $let file : int P.t = records
 end
 
-(* let code0 = build "csv" Parser.field lexer
- * let () = Format.(fprintf std_formatter) "let field = %a@." Codelib.print_code code0
- * 
- * let code1 = build "csv" Parser.fields lexer
- * let () = Format.(fprintf std_formatter) "let fields = %a@." Codelib.print_code code1
- * 
- * let code2 = build "csv" Parser.record lexer
- * let () = Format.(fprintf std_formatter) "let record = %a@." Codelib.print_code code2
- * 
- * let code3 = build "csv" Parser.records lexer
- * let () = Format.(fprintf std_formatter) "let records = %a@." Codelib.print_code code3 *)
-
-let code = Result.get_ok (build "csv" Parser.file lexer)
-(* let () = Format.(fprintf std_formatter) "let csv = %a@." Codelib.print_code code *)
+$let code : unit -> (string -> int) expr = fun () ->
+  Result.get_ok (build "csv" Parser.file lexer)

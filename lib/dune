@@ -1,7 +1,21 @@
+; Var lives in a plain sub-library, shift-imported by the staged
+; half; reex likewise serves the $let code through (static_libraries
+; ...) while remaining a normal (libraries ...) dependency for its
+; types.
+(library
+ (name vars)
+ (public_name flap.vars)
+ (modules vars))
+
 (library
  (public_name flap)
- (libraries letrec reex reex_match metaocaml)
- (modules Env Code Normal Compiler Fused Normalize Recognizer Flap)
- (flags (:standard "-open" "Codelib"))
- (preprocess (pps ppx_deriving.std))
+ (libraries flap.vars letrec reex reex_match reex_match.deriv charmatch)
+ (static_libraries flap.vars reex reex_match.deriv)
+ ; No ppx here.  The pp functions upstream derived ([@@deriving show]
+ ; on Tp.t and friends) would be level-0 values of this unit, which
+ ; its $let code cannot call, so they are hand-written $let bindings.
+ ; The TERM parameter's compare/pp are derived in consumers' plain
+ ; token sub-libraries and reach the $let code through the shifted
+ ; import (see sigs.ml).
+ (modules sigs mcol env code normal normalize fused compiler recognizer flap)
  (synopsis "Fused lexing and parsing"))

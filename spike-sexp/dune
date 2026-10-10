@@ -1,0 +1,130 @@
+(library
+ (name bisect_p)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_p))
+
+(executable
+ (name bisect_p_use)
+ (libraries bisect_p)
+ (static_libraries reex spike_tokens)
+ (modules bisect_p_use))
+
+(library
+ (name bisect_o)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_o))
+
+(executable
+ (name bisect_o_use)
+ (libraries bisect_o)
+ (static_libraries reex spike_tokens)
+ (modules bisect_o_use))
+
+(library
+ (name bisect_m)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_m))
+
+(library
+ (name bisect_n)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_n))
+
+(library
+ (name bisect_l)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_l))
+
+(library
+ (name bisect_j)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_j))
+
+(library
+ (name bisect_k)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_k))
+
+(library
+ (name bisect_h)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_h))
+
+(library
+ (name bisect_i)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_i))
+
+(library
+ (name bisect_f)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_f))
+
+(library
+ (name bisect_g)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_g))
+
+(library
+ (name bisect_c)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_c))
+
+(library
+ (name bisect_d)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_d))
+
+(library
+ (name bisect_e)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_e))
+
+(library
+ (name spike_tokens)
+ (modules spike_tokens))
+
+(library
+ (name bisect_b)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_b))
+
+(library
+ (name bisect_a)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules bisect_a))
+
+(library
+ (name spike_grammar)
+ (libraries flap reex grammars_common spike_tokens)
+ (static_libraries reex spike_tokens)
+ (modules spike_grammar))
+
+(test
+ (name spike_test)
+ (modules spike_test)
+ (libraries spike_grammar sexplib0 parsexp unix)
+ (static_libraries reex spike_tokens))
+
+(executable
+ (name spike_bench)
+ (modules spike_bench)
+ (modes native)
+ (libraries spike_grammar sexplib0 parsexp unix)
+ (static_libraries reex spike_tokens))

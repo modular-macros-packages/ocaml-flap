@@ -12,15 +12,18 @@
 
      flap: A Deterministic Parser with Fused Lexing
      PLDI 2023
+
+  (MacoCaml port: [Make] is a template over [TERM]; its operations are
+  [$let] bindings.)
  *)
 
-module Make(Term: sig type t [@@deriving ord, show] end) :
+module Make $(Term : Sigs.TERM) :
 sig
   type lexer_rhs = Skip | Error of string | Return of Term.t
   (** A lexer right-hand side is an action: either [Skip] (restart lexing),
       [Error e] (fail with an error message) or [Return v] (succeed, returning a value) *)
 
-  type 'a cont = Success of 'a Normal.Make(Term).prod
+  type 'a cont = Success of 'a Normal.Make$(Term).prod
                | Error of string
   (** The continuation of the regex corresponding to a token.  It is either
        [Error s]
@@ -33,7 +36,7 @@ sig
   type productions
   (** The abstract type of the productions of a fused grammar *)
 
-  val lookup : productions -> 'a Env.Var.t -> (Reex.t * 'a cont) list * 'a Code.t option
+  $val lookup : 'a. productions -> 'a Vars.Var.t -> (Reex.t * 'a cont) list * 'a Code.t option
   (** [lookup prods nt] returns [(prods, epso)], where [prods] is a list of
       productions for the nonterminal [nt].
 
@@ -45,10 +48,13 @@ sig
       used for backtracking if none of the other productions matches the input.
    *)
 
-  type 'a grammar = { start: 'a Env.Var.t; items: productions; } [@@deriving show]
+  type 'a grammar = { start: 'a Vars.Var.t; items: productions; }
   (** A fused grammar is a start symbol and a set of productions *)
 
-  val fuse : (Reex.t * lexer_rhs) list -> 'a Normal.Make(Term).grammar -> 'a grammar
+  $val pp_grammar : 'a 'b. 'b -> Format.formatter -> 'a grammar -> unit
+  $val show_grammar : 'a 'b. 'b -> 'a grammar -> string
+
+  $val fuse : 'a. (Reex.t * lexer_rhs) list -> 'a Normal.Make$(Term).grammar -> 'a grammar
   (** [fuse l p] constructs a fused grammar from a lexer [l] and a
       parser [p] in Deterministic Greibach Normal Form, as defined in Figure 6 of:
 

@@ -10,13 +10,17 @@
 
       flap: A Deterministic Parser with Fused Lexing
       PLDI 2023
+
+  (MacoCaml port: [Make] is a template over [TERM]; the recognizers
+  are [$let] bindings, running at generation time over the same
+  grammar values the compiler consumes.)
  *)
 
-module Make(Term : sig type t [@@deriving ord, show] end) :
+module Make $(Term : Sigs.TERM) :
 sig
   module Lexer :
   sig
-    val lex : (Reex.t * Fused.Make(Term).lexer_rhs) list -> string -> Term.t list option
+    $val lex : (Reex.t * Fused.Make$(Term).lexer_rhs) list -> string -> Term.t list option
    (** [lex] is an implementation of the lexing recognizer algorithm from Figure 7 of
 
          flap: A Deterministic Parser with Fused Lexing
@@ -25,7 +29,7 @@ sig
 
   module Normalized :
   sig
-    val recognize : _ Normal.Make(Term).grammar -> Term.t list -> bool
+    $val recognize : 'a. 'a Normal.Make$(Term).grammar -> Term.t list -> bool
    (** [recognize] is an implementation of the parsing recognizer algorithm for grammars
        in Deterministic Greibach Normal Form from Figure 8 of
 
@@ -35,7 +39,7 @@ sig
 
   module Fused :
   sig
-    val recognize : _ Fused.Make(Term).grammar -> string -> bool
+    $val recognize : 'a. 'a Fused.Make$(Term).grammar -> string -> bool
    (** [recognize] is an implementation of the parsing recognizer algorithm for fused grammars
        from Figure 9 of
 

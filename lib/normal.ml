@@ -1,70 +1,64 @@
-let pr = Format.fprintf
+
+
+$let pr : 'a. Format.formatter -> ('a, Format.formatter, unit) format -> 'a =
+  fun fmt f -> Format.fprintf fmt f
 
 (** Greibach Normal Form grammars. *)
 
-(** A grammar is in Greibach Normal Form (GNF) if all RHSs consist of
-   a terminal followed by a sequence of nonterminals.  The types in
-   this module can only represent grammars in a variation of GNF.
 
-   Our grammars differ from GNF in two ways:
-   (1) we allow all productions to include guarded ε transitions.
-       They're "guarded" in the sense that they're only active when
-       none of the terminals in the other productions match the input. 
-   (2) the terminals in the leftmost position of each rhs must be
-       disjoint for a given symbol: the grammars are "deterministic". 
-
-   Why not push epsilon transitions up to the top (start symbol)?  Two reasons:
-   (1) it's hard to do compositionally: de-ε-ing (g . (ε + g')) requires looking
-       at the _use_ sites of the expression.
-   (2) standard ε elimination makes grammars non-deterministic, which we need to avoid.
- *)
-
-module Make (Term : sig [@@@ocaml.warning "-32"] type t [@@deriving ord, show] end) =
+module Make $(Term : Sigs.TERM) =
 struct
-  module TermMap = Map.Make(Term)
+  module TermMap = Mcol.Mmap$(Term)
 
   type 'a ntseq = Empty : unit ntseq
-                | Cons : 'a Env.Var.t * 'b ntseq -> ('a * 'b) ntseq
-  let rec ntseq : type a. Format.formatter -> a ntseq -> unit =
-    fun fmt -> function
-            | Empty -> ()
-            | Cons (x, xs) -> pr fmt "@[%s@ %a@]" (Env.Var.str x) ntseq xs
+                | Cons : 'a Vars.Var.t * 'b ntseq -> ('a * 'b) ntseq
+  $let rec ntseq : 'a. Format.formatter -> 'a ntseq -> unit =
+    fun (type a) fmt (s : a ntseq) ->
+    match s with
+    | Empty -> ()
+    | Cons (x, xs) -> pr fmt "@[%s@ %a@]" (Vars.Var.str x) (fun fmt s -> ntseq fmt s) xs
 
   type 'l prod = Prod : { nonterms: 'n ntseq; semact: string Code.t -> 'n Code.t -> 'l Code.t } -> 'l prod
-  let pp_prod : type a. _ -> Format.formatter -> a prod -> unit =
+  $let pp_prod : 'a 'b. 'b -> Format.formatter -> 'a prod -> unit =
     fun _ fmt (Prod p) -> ntseq fmt p.nonterms
-  let show_prod _ = Format.asprintf "%a" (pp_prod ())
+  $let show_prod : 'a 'b. 'b -> 'a prod -> string =
+    fun _ p -> Format.asprintf "%a" (fun fmt p -> pp_prod () fmt p) p
 
   type 'a rhs = { prods: 'a prod TermMap.t; null: 'a Code.t option }
-  let pp_rhs : type a. _ -> Format.formatter -> a rhs -> unit =
+  $let pp_rhs : 'a 'b. 'b -> Format.formatter -> 'a rhs -> unit =
     fun _ fmt r ->
     begin
-      TermMap.iter (fun t p -> pr fmt " |@ %a @[%a@]" Term.pp t (pp_prod ()) p) r.prods;
+      TermMap.iter (fun t p -> pr fmt " |@ %a @[%a@]" Term.pp t (fun fmt p -> pp_prod () fmt p) p) r.prods;
       pr fmt "|@ ";
       if Option.is_some r.null then pr fmt "| ε";
     end
-  let show_rhs _ = Format.asprintf "%a" (pp_rhs ())
+  $let show_rhs : 'a 'b. 'b -> 'a rhs -> string =
+    fun _ r -> Format.asprintf "%a" (fun fmt r -> pp_rhs () fmt r) r
 
-  module Productions = Env.Env(struct type 'a t = 'a rhs end)
-  let productions fmt p =
-    Productions.pp (object method m : 'a. Format.formatter -> 'a rhs -> unit = pp_rhs () end) fmt p
+  module RhsV = struct type 'a t = 'a rhs end
+  module Productions = Env.Env$(RhsV)
+  $let productions : Format.formatter -> Productions.t -> unit =
+    fun fmt p ->
+    Productions.pp { Productions.m = fun fmt r -> pp_rhs () fmt r } fmt p
 
-  type 'a grammar = { start: 'a Env.Var.t; items: Productions.t; }
-  let pp_grammar _ fmt g = pr fmt "<%s,@ @[%a@]>" (Env.Var.str g.start) productions g.items
-  let show_grammar _ = Format.asprintf "%a" (pp_grammar ())
+  type 'a grammar = { start: 'a Vars.Var.t; items: Productions.t; }
+  $let pp_grammar : 'a 'b. 'b -> Format.formatter -> 'a grammar -> unit =
+    fun _ fmt g -> pr fmt "<%s,@ @[%a@]>" (Vars.Var.str g.start) (fun fmt p -> productions fmt p) g.items
+  $let show_grammar : 'a 'b. 'b -> 'a grammar -> string =
+    fun _ g -> Format.asprintf "%a" (fun fmt g -> pp_grammar () fmt g) g
 
-  type var = Var : _ Env.Var.t -> var 
+  type var = Var : _ Vars.Var.t -> var
 
-  let var_eql : var -> var -> bool =
+  $let var_eql : var -> var -> bool =
     fun (Var x) (Var y) ->
-    match Env.Var.eql x y with
+    match Vars.Var.eql x y with
     | Some _ -> true
     | None -> false
 
-  let var_mem : var -> var list -> bool =
-    fun x -> List.exists (var_eql x)
+  $let var_mem : var -> var list -> bool =
+    fun x l -> List.exists (var_eql x) l
 
-  let trim : type a. a grammar -> a grammar =
+  $let trim : 'a. 'a grammar -> 'a grammar =
     fun { start; items } ->
     let rec add_nonterms : type a. a ntseq -> seen:var list -> var list -> var list  =
       fun nts ~seen todo ->
@@ -88,7 +82,7 @@ struct
                    loop seen todo
     in
     let seen = loop [] [Var start] in
-    let prods = 
+    let prods =
       List.fold_left
         (fun t -> function
           | Productions.E (x,rhs) -> if var_mem (Var x) seen

@@ -6,39 +6,43 @@
  *)
 
 (* Compilation of fused deterministic GNF *)
-module Make (Term : sig type t [@@deriving ord, show] end) =
+
+module Make $(Term : Sigs.TERM) =
 struct
-  open Normal.Make(Term)
-  open Fused.Make(Term)
-  type ('a, 'b) fn = ('a code -> index:int code -> len:int code -> string code -> 'b code)
+  module Gnf = Normal.Make$(Term)
+  module Fused = Fused.Make$(Term)
+  module Normalize = Normalize.Make$(Term)
+  type ('a, 'b) fn = ('a expr -> index:int expr -> len:int expr -> string expr -> 'b expr)
 
   module Idx =
   struct
-    open Env
-    type 'a payload = { nt: 'a Var.t;
-                        prods: productions;
-                        nexts: ((Reex.t * (int ref code -> index:int code -> len:int code -> string code -> 'a code)) list);
+    type 'a payload = { nt: 'a Vars.Var.t;
+                        prods: Fused.productions;
+                        nexts: ((Reex.t * (int ref expr -> index:int expr -> len:int expr -> string expr -> 'a expr)) list);
                         fn: (int ref, 'a) fn; }
     type 'a t = T : 'a payload -> (int ref -> index:int -> prev:int -> len:int -> string -> 'a) t
 
-    let rec eql_prods : type a b. (Reex.t * a) list -> (Reex.t * b) list -> bool =
+    $let rec eql_prods : 'a 'b. (Reex.t * 'a) list -> (Reex.t * 'b) list -> bool =
       fun l r ->
       match l, r with
       | [], [] -> true
       | [], _ | _, [] -> false
       | (x,_) :: xs, (y,_) :: ys -> Reex.equal x y && eql_prods xs ys
 
-    let eql (type a b) (T {nt=l; nexts=lrhs;_} : a t) (T {nt=r; nexts=rrhs;_} : b t) : (a, b) Letrec.eql option =
-      match Var.eql l r with
-      | Some Refl when eql_prods lrhs rrhs (* && lf == rf *) -> Some Refl
+    $let eql : 'a 'b. 'a t -> 'b t -> ('a, 'b) Type.eq option =
+      fun (type a b) (T {nt=l; nexts=lrhs;_} : a t) (T {nt=r; nexts=rrhs;_} : b t) : (a, b) Type.eq option ->
+      match Vars.Var.eql l r with
+      | Some Type.Equal when eql_prods lrhs rrhs (* && lf == rf *) -> Some Type.Equal
       | _ -> None
   end
-  module Rec = Letrec.Make(Idx)
-  module Normalize = Normalize.Make(Term)
 
-  let eps_fallback = function
-    | None -> fun _ ~index:_  ~len:_ _ -> .<failwith "unexpected eof" >.
-    | Some c -> fun _ ~index:_  ~len:_ _ -> Code.dyn c
+  type resolver = { resolve : 'a. 'a Idx.t -> 'a expr }
+
+  $let eps_fallback : 'a 'b. 'b Code.t option -> ('a, 'b) fn =
+    fun c ->
+    match c with
+    | None -> (fun _ ~index:_  ~len:_ _ -> << failwith "unexpected eof" >>)
+    | Some c -> (fun _ ~index:_  ~len:_ _ -> Code.dyn c)
 
   (* The general algorithm is as follows:
 
@@ -51,48 +55,52 @@ struct
                                          else fail
                  else continue with f_NT_δc(M)
    *)
-  let make_cases_exclusive cases =
+  $let make_cases_exclusive : 'a. (Reex.t * 'a) list -> (Reex.t * 'a) list =
+    fun cases ->
     (List.rev @@ Stdlib.fst @@ List.fold_left
       (fun (cases, seen) (lhs, rhs) ->
         Reex.(let lhs' = lhs <&> not seen in ((lhs', rhs) :: cases, seen <|> lhs')))
       ([], Reex.empty)
       cases)
 
-  let rec ntseq : type a. Rec.resolve -> productions -> int ref code -> len:int code -> string code -> a ntseq -> a Code.t =
-    fun resolve ps start ~len s seq ->
+  $let rec ntseq : 'a. resolver -> Fused.productions -> int ref expr -> len:int expr -> string expr -> 'a Gnf.ntseq -> 'a Code.t =
+    fun (type a) resolve ps start ~len s (seq : a Gnf.ntseq) : a Code.t ->
     match seq with
     | Empty -> Code.unit
-    | Cons (x, xs) -> let cases, eps = lookup ps x in
+    | Cons (x, xs) -> let cases, eps = Fused.lookup ps x in
                       let cases' = List.map (fun (r, k) -> (r, unCont resolve ps k)) cases in
-                      Code.let_ (Code.inj .< .~(resolve.Rec.resolve (Idx.T {nt=x; prods=ps; nexts=cases';
-                                                                            fn =eps_fallback eps}))
-                                               .~start ~prev:0 ~len:.~len ~index:(! .~start) .~s >.) @@ fun x' ->
+                      Code.let_ (Code.inj << $(resolve.resolve (Idx.T {nt=x; prods=ps; nexts=cases';
+                                                                       fn = eps_fallback eps}))
+                                               $start ~prev:0 ~len:$len ~index:(! $start) $s >>) @@ fun x' ->
                       Code.let_ (ntseq resolve ps start ~len s xs) @@ fun xs' ->
                       Code.pair x' xs'
 
-  and prod : type a. Rec.resolve -> productions -> a Normal.Make(Term).prod -> int ref code -> len:int code -> string code -> string code -> a Code.t
-    = fun r ps (Prod {nonterms; semact}) start ~len s tok ->
+  and prod : 'a. resolver -> Fused.productions -> 'a Gnf.prod -> int ref expr -> len:int expr -> string expr -> string expr -> 'a Code.t
+    = fun r ps (Gnf.Prod {nonterms; semact}) start ~len s tok ->
     Code.let_ (ntseq r ps start ~len s nonterms) @@ fun x ->
     semact (Code.injv tok) x
 
-  and unCont : type a. Rec.resolve -> productions -> a cont -> int ref code -> index:int code -> len:int code -> string code -> a code =
+  and unCont : 'a. resolver -> Fused.productions -> 'a Fused.cont -> int ref expr -> index:int expr -> len:int expr -> string expr -> 'a expr =
     fun resolve ps k start ~index:i ~len s ->
     match k with
-    | Success p -> .< let _start = ! .~start in let _ = .~start := .~i in
-                    .~(Code.dyn (prod resolve ps p start ~len s .<String.sub .~s _start (.~i - _start)>.)) >.
-    | Error e -> .< Printf.ksprintf failwith "Error (position %d): %s" .~i e >.
+    | Fused.Success p -> << let _start = ! $start in let _ = $start := $i in
+                    $(Code.dyn (prod resolve ps p start ~len s << String.sub $s _start ($i - _start) >>)) >>
+    | Fused.Error e -> << Printf.ksprintf failwith "Error (position %d): %s" $i $(Expr.string e) >>
 
-  let rhs (type a) {Rec.resolve} (Idx.T {nt; prods; nexts=rhs; fn} : a Idx.t) : a code =
-    Reex_match.matchk_ ~options:{match_type=`ranges; null_optimization=true}
-      (fun (nexts, fn) -> resolve (T {nt; prods; nexts; fn})) (rhs, fn)
+  $let step : 'a. resolver -> 'a Idx.t -> 'a expr =
+    fun (type a) resolve (Idx.T {nt; prods; nexts=rhs0; fn} : a Idx.t) : a expr ->
+    Reex_match.matchk_ ~options:{Reex_match.match_type=`ranges; null_optimization=true}
+      (fun (nexts, fn) -> resolve.resolve (Idx.T {nt; prods; nexts; fn})) (rhs0, fn)
 
-  let compile cases g =
-    let {start; items} = fuse (make_cases_exclusive cases) (Normalize.resolve g) in
-    Rec.letrec {rhs=rhs}
-      (fun {resolve} ->
-        .< fun s -> let start' = ref 0 and len = String.length s in
-                    .~(let rs, eps = lookup items start in
-                       resolve (T {nt=start; prods=items; fn = eps_fallback eps;
-                                   nexts=List.map (fun (r, k) -> (r, unCont {resolve} items k)) rs }))
-                         start' ~index:0 ~prev:0 ~len s >.)
+  $let compile : 'a. (Reex.t * Fused.lexer_rhs) list -> 'a Normalize.t -> (string -> 'a) expr =
+    fun cases g ->
+    let {Fused.start; items} = Fused.fuse (make_cases_exclusive cases) (Normalize.resolve g) in
+    Letrec.letrec (module Idx)
+      (fun resolve idx -> step {resolve} idx)
+      (fun resolve ->
+        << fun s -> let start' = ref 0 and len = String.length s in
+                    $(let rs, eps = Fused.lookup items start in
+                      {resolve}.resolve (Idx.T {nt=start; prods=items; fn = eps_fallback eps;
+                                                nexts=List.map (fun (r, k) -> (r, unCont {resolve} items k)) rs }))
+                         start' ~index:0 ~prev:0 ~len s >>)
 end

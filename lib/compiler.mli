@@ -11,10 +11,13 @@
 
       flap: A Deterministic Parser with Fused Lexing
       PLDI 2023
+
+    (MacoCaml port: [Make] is a template over [TERM]; [compile] is a
+    [$let] binding.)
  *)
 
-module Make(Term : sig type t [@@deriving ord, show] end) :
+module Make $(Term : Sigs.TERM) :
 sig
-  val compile : (Reex.t * Fused.Make(Term).lexer_rhs) list -> 'a Normalize.Make(Term).t -> (string -> 'a) code
+  $val compile : 'a. (Reex.t * Fused.Make$(Term).lexer_rhs) list -> 'a Normalize.Make$(Term).t -> (string -> 'a) expr
   (** [compile l p] constructs the code for a fused parser from a lexer [l] and parser [p]. *)
 end
